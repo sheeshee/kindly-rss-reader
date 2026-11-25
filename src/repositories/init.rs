@@ -48,7 +48,7 @@ pub fn init_database(config: &Config) -> ConnectionThreadSafe {
         })
         .collect();
 
-    let migration_files: Vec<DirEntry> =
+    let mut migration_files: Vec<DirEntry> =
         read_dir(format!("{}/migrations", config.static_data_path))
             .expect("unable to read migrations directory")
             .collect::<Result<Vec<DirEntry>, _>>()
@@ -58,6 +58,9 @@ pub fn init_database(config: &Config) -> ConnectionThreadSafe {
                 !migrations_done.contains(&m.file_name()) && m.file_name() != MIGRATIONS_TABLE_FILE
             })
             .collect();
+    // read_dir order is filesystem-dependent (on ext4 it is not alphabetical), and
+    // migrations depend on each other, so run them in file name (date) order.
+    migration_files.sort_by_key(|m| m.file_name());
 
     for migration in migration_files {
         let migration_filename = migration.file_name();
