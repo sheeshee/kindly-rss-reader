@@ -30,13 +30,33 @@ pub struct Config {
     /// How many minutes we should wait before checking the feed for new articles
     #[serde(default = "Config::minutes_to_check_for_updates")]
     pub minutes_to_check_for_updates: u16,
+
+    /// URL path prefix the app is served under, e.g. `/rss` when a reverse proxy
+    /// forwards `https://host/rss/...` to this app. Empty (the default) serves at `/`.
+    /// Links to downloaded images and favicons are stored with this prefix, so set it
+    /// before adding feeds.
+    #[serde(default)]
+    pub base_path: String,
 }
 
 impl Config {
     pub fn load() -> Self {
         match envy::from_env::<Config>() {
-            Ok(config) => config,
+            Ok(mut config) => {
+                config.base_path = Self::normalize_base_path(&config.base_path);
+                config
+            }
             Err(error) => panic!("{:#?}", error),
+        }
+    }
+
+    /// Turns `rss`, `/rss/` or `/rss` into `/rss`, and `/` or an empty string into `""`.
+    pub fn normalize_base_path(base_path: &str) -> String {
+        let trimmed = base_path.trim().trim_matches('/');
+        if trimmed.is_empty() {
+            String::new()
+        } else {
+            format!("/{trimmed}")
         }
     }
 
@@ -44,6 +64,7 @@ impl Config {
         tracing::info!("Running on: {}:{}", self.ip, self.port);
         tracing::info!("Data path: {}", self.data_path);
         tracing::info!("Static data path: {}", self.static_data_path);
+        tracing::info!("Base path: {:?}", self.base_path);
     }
 
     fn default_data_path() -> String {
@@ -68,5 +89,20 @@ impl Config {
 
     fn minutes_to_check_for_updates() -> u16 {
         120
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::Config;
+
+    #[test]
+    fn normalize_base_path() {
+        assert_eq!(Config::normalize_base_path(""), "");
+        assert_eq!(Config::normalize_base_path("/"), "");
+        assert_eq!(Config::normalize_base_path("rss"), "/rss");
+        assert_eq!(Config::normalize_base_path("/rss"), "/rss");
+        assert_eq!(Config::normalize_base_path("/rss/"), "/rss");
+        assert_eq!(Config::normalize_base_path(" /apps/rss/ "), "/apps/rss");
     }
 }

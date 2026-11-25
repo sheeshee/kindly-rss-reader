@@ -29,7 +29,7 @@
         fetch('{{action_url}}',  { method: '{{method}}' || 'DELETE' })
             .then(response => {
                 if (response.ok) {
-                    window.location.href = '{{sucess_url}}' || '/';
+                    window.location.href = '{{sucess_url}}' || '{{ base_path }}/';
                 } else {
                     // TODO: Remove this, redirect to error page with a message
                     alert('Action failed.');

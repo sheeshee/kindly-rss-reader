@@ -273,7 +273,10 @@ where
     // TODO: File paths are not responsibility of this service, they should be managed by
     // ImageProcessorFsImpl and FeedContentFsRepositoryImpl
     fn get_article_router_path(&self, feed_id: Uuid) -> String {
-        format!("{}/{feed_id}", self.articles_router_path)
+        format!(
+            "{}{}/{feed_id}",
+            self.config.base_path, self.articles_router_path
+        )
     }
 
     // TODO: File paths are not responsibility of this service, they should be managed by

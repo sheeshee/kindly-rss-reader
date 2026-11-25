@@ -97,7 +97,7 @@
             function toggleDontInvertImages() {
                 dontInvertImages = !dontInvertImages;
 
-                fetch("/config/dont_invert_images", {
+                fetch("{{ base_path }}/config/dont_invert_images", {
                   method: "POST",
                   headers: { "Content-Type": "application/x-www-form-urlencoded" },
                   body: new URLSearchParams({ dont_invert_images: dontInvertImages })
@@ -107,7 +107,7 @@
             function toggleHideArticleHeader() {
                 hideArticleHeader = !hideArticleHeader;
 
-                fetch("/config/hide_article_header", {
+                fetch("{{ base_path }}/config/hide_article_header", {
                   method: "POST",
                   headers: { "Content-Type": "application/x-www-form-urlencoded" },
                   body: new URLSearchParams({ hide_article_header: hideArticleHeader })
@@ -117,7 +117,7 @@
             function toggleToolbarPosition() {
                 toolbarPositionLeft = !toolbarPositionLeft;
 
-                fetch("/config/toolbar_position_left", {
+                fetch("{{ base_path }}/config/toolbar_position_left", {
                   method: "POST",
                   headers: { "Content-Type": "application/x-www-form-urlencoded" },
                   body: new URLSearchParams({ toolbar_position_left: toolbarPositionLeft })

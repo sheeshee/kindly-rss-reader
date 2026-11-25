@@ -1,9 +1,9 @@
 <!-- SPDX-FileCopyrightText: 2025-2026 Nicolás Antinori <nico.antinori.7@gmail.com> -->
 <!-- SPDX-License-Identifier: AGPL-3.0-only -->
-<link rel="stylesheet" href="/static/css/font-awesome.min.css?v={{version}}">
-<link rel="stylesheet" href="/static/css/general.css?v={{version}}">
-<link rel="stylesheet" href="/static/css/dark_theme.css?v={{version}}" class="alternate" {% if not config.dark_theme %} disabled="true" {% endif %}>
-<link rel="stylesheet" href="/static/css/light_theme.css?v={{version}}" class="alternate" {% if config.dark_theme %} disabled="true" {% endif %}>
+<link rel="stylesheet" href="{{ base_path }}/static/css/font-awesome.min.css?v={{version}}">
+<link rel="stylesheet" href="{{ base_path }}/static/css/general.css?v={{version}}">
+<link rel="stylesheet" href="{{ base_path }}/static/css/dark_theme.css?v={{version}}" class="alternate" {% if not config.dark_theme %} disabled="true" {% endif %}>
+<link rel="stylesheet" href="{{ base_path }}/static/css/light_theme.css?v={{version}}" class="alternate" {% if config.dark_theme %} disabled="true" {% endif %}>
 {% if config.dont_invert_images %}
 <style>
     img:not(.favicon) {
@@ -11,9 +11,9 @@
     }
 </style>
 {% endif %}
-<link rel="apple-touch-icon" sizes="180x180" href="/static/images/apple-touch-icon.png"> <link rel="icon" type="image/png" sizes="32x32" href="/static/images/favicon-32x32.png">
-<link rel="icon" type="image/png" sizes="16x16" href="/static/images/favicon-16x16.png">
-<link rel="manifest" href="/static/images/site.webmanifest">
+<link rel="apple-touch-icon" sizes="180x180" href="{{ base_path }}/static/images/apple-touch-icon.png"> <link rel="icon" type="image/png" sizes="32x32" href="{{ base_path }}/static/images/favicon-32x32.png">
+<link rel="icon" type="image/png" sizes="16x16" href="{{ base_path }}/static/images/favicon-16x16.png">
+<link rel="manifest" href="{{ base_path }}/static/images/site.webmanifest">
 <script type="text/javascript">
     var scrollPosition = 0;
     var bodyDiv = null;
@@ -92,7 +92,7 @@
     }
 
     function setZoomConfig(zoom) {
-        fetch("/config/zoom", {
+        fetch("{{ base_path }}/config/zoom", {
           method: "POST",
           headers: { "Content-Type": "application/x-www-form-urlencoded" },
           body: new URLSearchParams({ zoom })
@@ -147,7 +147,7 @@
 
         darkTheme = !darkTheme;
 
-        fetch("/config/dark_theme", {
+        fetch("{{ base_path }}/config/dark_theme", {
           method: "POST",
           headers: { "Content-Type": "application/x-www-form-urlencoded" },
           body: new URLSearchParams({ dark_theme: darkTheme })
@@ -162,6 +162,6 @@
 
     function home() {
         sessionStorage.setItem("refresh", "true");
-        window.location = '/';
+        window.location = '{{ base_path }}/';
     }
 </script>

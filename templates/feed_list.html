@@ -11,10 +11,10 @@
             {% endif %}
             <div class="content">
                 <div id="header" class="section-header">
-                    <img src="/static/images/logo.webp" height="45px" />
+                    <img src="{{ base_path }}/static/images/logo.webp" height="45px" />
                     <h1> Feed list </h1>
                     <div class="section-header-buttons">
-                        <a href="/feed/add">
+                        <a href="{{ base_path }}/feed/add">
                             <i
                                 id="scrollUpButton"
                                 class="fa fa-plus button"
@@ -22,7 +22,7 @@
                             </i>
                         </a>
 
-                        <a href="/config">
+                        <a href="{{ base_path }}/config">
                             <i
                                 id="configButton"
                                 class="fa fa-gear button"
@@ -33,12 +33,12 @@
                 </div>
                 <div id="body" class="list">
                     {% for feed in context.feeds %}
-                        <a href="feed/{{ feed.id }}">
+                        <a href="{{ base_path }}/feed/{{ feed.id }}">
                             <div class="feed-list-item">
                                 {% if feed.favicon_url %}
                                     <img src="{{ feed.favicon_url }}" class="favicon" />
                                 {% else %}
-                                    <img id="default_favicon" src="/static/images/default_favicon.png" class="favicon" />
+                                    <img id="default_favicon" src="{{ base_path }}/static/images/default_favicon.png" class="favicon" />
                                 {% endif %}
                                 <h3>{{ feed.title }}</h3>
                                 {% if feed.unread_count > 0 %}

@@ -88,7 +88,8 @@ impl State {
             Arc::new(PersistedConfigProviderImpl::new(persisted_config));
 
         // Initialize template service
-        let mut template_service = TemplateServiceImpl::new(persisted_config_provider.clone());
+        let mut template_service =
+            TemplateServiceImpl::new(persisted_config_provider.clone(), &config.base_path);
         for (name, path) in TEMPLATES {
             template_service
                 .register_template(name, format!("{}/{path}", config.static_data_path))

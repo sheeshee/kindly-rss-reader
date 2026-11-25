@@ -14,7 +14,7 @@
                     {% if context.feed.favicon_url %}
                         <img src="{{ context.feed.favicon_url }}" class="favicon" />
                     {% else %}
-                        <img id="default_favicon" src="/static/images/default_favicon.png" class="favicon" />
+                        <img id="default_favicon" src="{{ base_path }}/static/images/default_favicon.png" class="favicon" />
                     {% endif %}
                     <h1> {{ context.feed.title }} </h1>
                     <div class="section-header-buttons">
@@ -25,7 +25,7 @@
                 </div>
                 <div id="body" class="list">
                     {% for item in context.articles %}
-                    <a href="/feed/{{context.feed.id}}/article/{{item.id}}">
+                    <a href="{{ base_path }}/feed/{{context.feed.id}}/article/{{item.id}}">
                         <div class="article-list-item">
                             <h2>{{ item.title }}</h2>
                             {% if item.updated %}<span class="updated"><i class="fa fa-refresh" aria-hidden="true"></i></span>{% endif %}
@@ -50,8 +50,8 @@
             message="Are you sure you want to delete this feed?",
             true_text="Yes",
             false_text="Cancel",
-            action_url="/feed/" ~ context.feed.id,
-            sucess_url="/",
+            action_url=base_path ~ "/feed/" ~ context.feed.id,
+            sucess_url=base_path ~ "/",
             method="DELETE"
         %}
             {% include "dialog" %}

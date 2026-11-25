@@ -20,9 +20,11 @@ impl<PCP> TemplateServiceImpl<'_, PCP>
 where
     PCP: PersistedConfigProvider,
 {
-    pub fn new(persisted_config_provider: Arc<PCP>) -> Self {
+    pub fn new(persisted_config_provider: Arc<PCP>, base_path: &str) -> Self {
+        let mut environment = Environment::new();
+        environment.add_global("base_path", base_path.to_owned());
         Self {
-            environment: Environment::new(),
+            environment,
             persisted_config_provider,
         }
     }

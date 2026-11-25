@@ -167,7 +167,10 @@ impl FaviconProvider for FaviconProviderImpl {
                     .await
                     .map_err(|e| FaviconProviderError::IoError(e.to_string()))?;
 
-                let relative_path = format!("{}/{}", self.favicon_router_path, feed_id);
+                let relative_path = format!(
+                    "{}{}/{}",
+                    self.config.base_path, self.favicon_router_path, feed_id
+                );
                 return Ok(Some(relative_path));
             }
             info!("Could not download fav icon from {favicon_url}");
@@ -180,7 +183,10 @@ impl FaviconProvider for FaviconProviderImpl {
                 .await
                 .map_err(|e| FaviconProviderError::IoError(e.to_string()))?;
 
-            let relative_path = format!("{}/{}", self.favicon_router_path, feed_id);
+            let relative_path = format!(
+                "{}{}/{}",
+                self.config.base_path, self.favicon_router_path, feed_id
+            );
             return Ok(Some(relative_path));
         }
 

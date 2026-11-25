@@ -4,8 +4,17 @@ pub mod config;
 pub mod feed;
 pub mod not_found;
 
-use axum::response::{Html, IntoResponse};
+use axum::extract::NestedPath;
+use axum::response::{Html, IntoResponse, Redirect};
 use reqwest::{StatusCode, header};
+
+/// Redirects to the feed list, keeping the base path when the app is nested under one.
+pub(crate) fn redirect_home(nested_path: Option<NestedPath>) -> Redirect {
+    match nested_path {
+        Some(path) => Redirect::to(&format!("{}/", path.as_str().trim_end_matches('/'))),
+        None => Redirect::to("/"),
+    }
+}
 
 pub(crate) struct ApiError {
     pub original_error: Box<dyn std::error::Error + 'static>,

@@ -5,8 +5,8 @@
         {% include "common_head" %}
     </head>
     <body class="not-found">
-        <img src="{{ context.error.error_image_path }}" height="300px" />
+        <img src="{{ base_path }}{{ context.error.error_image_path }}" height="300px" />
         <h1> {{ context.error.message }} </h1>
-        <h2><a href="/"> Go back home </a></h2>
+        <h2><a href="{{ base_path }}/"> Go back home </a></h2>
     <body>
 </html>

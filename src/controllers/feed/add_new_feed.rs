@@ -4,7 +4,7 @@ use crate::controllers::ApiError;
 use crate::services::feed::FeedService;
 use crate::state::AppState;
 use axum::Form;
-use axum::extract::State;
+use axum::extract::{NestedPath, State};
 use axum::response::Redirect;
 use reqwest::Url;
 use serde::Deserialize;
@@ -16,6 +16,7 @@ pub struct FeedAddForm {
 
 pub async fn add_new_feed<S>(
     State(state): State<S>,
+    nested_path: Option<NestedPath>,
     Form(rss_url): Form<FeedAddForm>,
 ) -> Result<Redirect, ApiError>
 where
@@ -23,5 +24,5 @@ where
 {
     let url = Url::try_from(rss_url.url.as_str()).map_err(|e| anyhow::anyhow!("{e}"))?;
     state.feed_service().add_feed(url).await?;
-    Ok(Redirect::to("/"))
+    Ok(crate::controllers::redirect_home(nested_path))
 }

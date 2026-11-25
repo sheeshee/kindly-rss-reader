@@ -44,7 +44,7 @@ pub fn build<S: AppState>(state: S, config: &Config) -> Router {
         .into_string()
         .expect("invalid favicons path");
 
-    Router::new()
+    let routes = Router::new()
         .nest_service(STATIC_DIR, ServeDir::new(&static_data_path))
         .nest_service(ARTICLES_DIR, ServeDir::new(articles_path))
         .nest_service(FAVICONS_DIR, ServeDir::new(favicons_path))
@@ -70,7 +70,19 @@ pub fn build<S: AppState>(state: S, config: &Config) -> Router {
             "/config/dont_invert_images",
             post(set_dont_invert_images::<S>),
         )
-        .route("/", get(get_feed_list::<S>))
+        .route("/", get(get_feed_list::<S>));
+
+    let router = if config.base_path.is_empty() {
+        routes
+    } else {
+        // A nested "/" route only matches the bare prefix ("/rss"), so also serve
+        // the feed list at "/rss/", the URL reverse proxies usually redirect to.
+        Router::new()
+            .nest(&config.base_path, routes)
+            .route(&format!("{}/", config.base_path), get(get_feed_list::<S>))
+    };
+
+    router
         .layer(ErrorHandlingLayer::new(state.clone()))
         .fallback(not_found::<S>)
         .with_state(state)
