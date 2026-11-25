@@ -40,6 +40,10 @@ The following environment variables are used to configure some aspects of the ap
 
     **Note**: Do not modify this when running it in docker.
 
+- `BASE_PATH`: URL path prefix to serve the app under, for running it behind a reverse proxy at e.g. `https://example.com/rss/`. Links to downloaded images and favicons are saved with this prefix, so set it before adding feeds.
+
+    *Default value: empty (the app is served at `/`)*
+
 - `RUST_LOG`: Configure log level:
   - `TRACE`
   - `DEBUG`
