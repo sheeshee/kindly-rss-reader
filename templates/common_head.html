@@ -87,6 +87,7 @@
         currentPage = loadSavedPage();
         layoutPages();
         bodyDiv.addEventListener("click", onPageTap);
+        initImageLongPress();
 
         // Images that finish loading after onload change the layout.
         bodyDiv.querySelectorAll("img").forEach(function (img) {
@@ -154,19 +155,18 @@
 
     // Taps on a paginated view:
     //   - links keep working as links
-    //   - an image opens it full screen
     //   - left half goes to the previous page, right half to the next one
+    //     (images included; a long press on an image opens the viewer)
     function onPageTap(event) {
         let target = event.target;
+        if (clicksIgnored()) {
+            return;
+        }
         if (target.closest && target.closest("a")) {
             return;
         }
         let selection = window.getSelection ? window.getSelection() : null;
         if (selection && selection.toString().length > 0) {
-            return;
-        }
-        if (target.tagName === "IMG" && !target.classList.contains("favicon")) {
-            openImageViewer(target);
             return;
         }
         let rect = bodyDiv.getBoundingClientRect();
@@ -180,7 +180,95 @@
     function nextPage() { showPage(currentPage + 1); }
     function prevPage() { showPage(currentPage - 1); }
 
-    // Full screen image viewer: tap the image to open, tap anywhere to close.
+    // ---------------------------------------------------------------------
+    // Long press on an image opens the full screen viewer.
+    //
+    // Implemented with touch events plus a timer (pointer events and the
+    // long-press "contextmenu" event are not reliable on e-reader browsers).
+    // Mouse events do the same for desktop browsers. The tap/click that may
+    // follow the press is swallowed so it neither turns the page nor closes
+    // the viewer that just opened.
+    // ---------------------------------------------------------------------
+    var LONG_PRESS_MS = 500;
+    var LONG_PRESS_MOVE_TOLERANCE = 10;
+    var longPressTimer = null;
+    var longPressStart = null;
+    var longPressFired = false;
+    var ignoreClicksUntil = 0;
+
+    function clicksIgnored() {
+        return Date.now() < ignoreClicksUntil;
+    }
+
+    function viewableImage(target) {
+        return target && target.tagName === "IMG"
+            && !target.classList.contains("favicon")
+            && !(target.closest && target.closest("a"));
+    }
+
+    function startLongPress(target, x, y) {
+        cancelLongPress();
+        if (!viewableImage(target)) {
+            return;
+        }
+        longPressFired = false;
+        longPressStart = { x: x, y: y };
+        longPressTimer = setTimeout(function () {
+            longPressTimer = null;
+            longPressFired = true;
+            openImageViewer(target);
+        }, LONG_PRESS_MS);
+    }
+
+    function moveLongPress(x, y) {
+        if (longPressTimer && longPressStart
+            && (Math.abs(x - longPressStart.x) > LONG_PRESS_MOVE_TOLERANCE
+                || Math.abs(y - longPressStart.y) > LONG_PRESS_MOVE_TOLERANCE)) {
+            cancelLongPress();
+        }
+    }
+
+    function endLongPress() {
+        cancelLongPress();
+        if (longPressFired) {
+            longPressFired = false;
+            ignoreClicksUntil = Date.now() + 600;
+        }
+    }
+
+    function cancelLongPress() {
+        if (longPressTimer) {
+            clearTimeout(longPressTimer);
+            longPressTimer = null;
+        }
+    }
+
+    function initImageLongPress() {
+        bodyDiv.addEventListener("touchstart", function (e) {
+            if (e.touches.length !== 1) { return cancelLongPress(); }
+            startLongPress(e.target, e.touches[0].clientX, e.touches[0].clientY);
+        });
+        bodyDiv.addEventListener("touchmove", function (e) {
+            moveLongPress(e.touches[0].clientX, e.touches[0].clientY);
+        });
+        bodyDiv.addEventListener("touchend", endLongPress);
+        bodyDiv.addEventListener("touchcancel", endLongPress);
+
+        // Desktop: hold the mouse button. Browsers emulate mouse events only
+        // after a touch has ended, so this does not double fire on touch.
+        bodyDiv.addEventListener("mousedown", function (e) {
+            if (e.button === 0) { startLongPress(e.target, e.clientX, e.clientY); }
+        });
+        bodyDiv.addEventListener("mousemove", function (e) { moveLongPress(e.clientX, e.clientY); });
+        bodyDiv.addEventListener("mouseup", endLongPress);
+
+        // Suppress the browser's own long-press menu on images.
+        bodyDiv.addEventListener("contextmenu", function (e) {
+            if (viewableImage(e.target)) { e.preventDefault(); }
+        });
+    }
+
+    // Full screen image viewer: long press an image to open, tap to close.
     function openImageViewer(img) {
         let viewer = document.getElementById("imageViewer");
         if (!viewer) {
@@ -188,7 +276,10 @@
             viewer.id = "imageViewer";
             viewer.className = "image-viewer";
             viewer.appendChild(document.createElement("img"));
-            viewer.addEventListener("click", closeImageViewer);
+            viewer.addEventListener("click", function () {
+                if (!clicksIgnored()) { closeImageViewer(); }
+            });
+            viewer.addEventListener("contextmenu", function (e) { e.preventDefault(); });
             document.body.appendChild(viewer);
         }
         let big = viewer.firstChild;

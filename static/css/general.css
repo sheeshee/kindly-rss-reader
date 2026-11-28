@@ -293,6 +293,9 @@ sub {
  * max-height (half a page) is set from JS, which knows the page height.
  */
 .body.paginated img:not(.favicon) {
+    -webkit-touch-callout: none; /* long press opens our viewer, not the native menu */
+    -webkit-user-select: none;
+    user-select: none;
     width: auto;
     height: auto;
     max-width: 100%;

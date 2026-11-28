@@ -11,7 +11,8 @@
 //     and a tap on a link does not turn the page
 //   - the toolbar buttons move by pages (next/prev/first/last)
 //   - images keep their aspect ratio and are at most half a page tall
-//   - tapping an image opens it full screen; tapping again closes it
+//   - a short tap on an image turns the page; a long press opens it full
+//     screen and a tap closes it
 //   - zooming re-paginates without breaking the above
 //   - a list remembers its page when you come back to it
 // Screenshots of each page are written to tests/e2e/out/.
@@ -171,14 +172,15 @@ async function checkImages(page, label) {
   const tall = imgs.filter((i) => i.height > i.maxHeight + 1);
   check(tall.length === 0, `images at most half a page tall${tall.length ? ": " + tall.map((t) => `${t.src} ${t.height}px`).join(", ") : ""}`);
 
-  // Go to the page with the first unlinked image and tap it.
+  // Go to the page with the first unlinked image.
   const target = await page.evaluate(() => {
     const img = [...document.querySelectorAll("[data-e2e-img]")].find((i) => !i.closest("a"));
     if (!img) return null;
     const body = document.getElementById("body");
     const page = Math.floor((img.offsetLeft) / body.clientWidth);
     showPage(page);
-    return { idx: img.getAttribute("data-e2e-img"), page: currentPage };
+    const r = body.getBoundingClientRect();
+    return { idx: img.getAttribute("data-e2e-img"), page: currentPage, pageCount, mid: r.left + r.width / 2 };
   });
   if (!target) {
     console.log("  skip all images are inside links");
@@ -186,25 +188,59 @@ async function checkImages(page, label) {
   }
   await page.waitForTimeout(50);
   const box = await page.locator(`[data-e2e-img="${target.idx}"]`).boundingBox();
-  await page.touchscreen.tap(box.x + box.width / 2, box.y + box.height / 2);
+  const cy = box.y + box.height / 2;
+
+  // Short tap on the image turns the page like text does.
+  const onRight = box.x + box.width > target.mid + 10;
+  const tx = onRight ? (Math.max(box.x, target.mid) + box.x + box.width) / 2 : box.x + box.width / 2;
+  const expected = onRight ? Math.min(target.page + 1, target.pageCount - 1) : Math.max(target.page - 1, 0);
+  await page.touchscreen.tap(tx, cy);
   await page.waitForTimeout(100);
+  const viewerShown = () => page.evaluate(() => {
+    const v = document.getElementById("imageViewer");
+    return !!v && getComputedStyle(v).display !== "none";
+  });
+  check(!(await viewerShown()), "short tap on image does not open viewer");
+  check((await state(page)).currentPage === expected,
+    `short tap on image (${onRight ? "right" : "left"} half) turns page ${target.page + 1} -> ${expected + 1}`);
+  await page.evaluate((p) => showPage(p), target.page);
+  await page.waitForTimeout(50);
+
+  // Long press (real touch events via CDP) opens the viewer, and it stays
+  // open after the finger lifts.
+  const cx = box.x + box.width / 2;
+  const cdp = await page.context().newCDPSession(page);
+  await cdp.send("Input.dispatchTouchEvent", { type: "touchStart", touchPoints: [{ x: cx, y: cy }] });
+  await page.waitForTimeout(800);
+  await cdp.send("Input.dispatchTouchEvent", { type: "touchEnd", touchPoints: [] });
+  await page.waitForTimeout(150);
   const viewer = await page.evaluate(() => {
     const v = document.getElementById("imageViewer");
     if (!v || getComputedStyle(v).display === "none") return null;
     const i = v.querySelector("img");
     return { w: i.width, h: i.height, ratio: i.width / i.height, natural: i.naturalWidth / i.naturalHeight, vw: innerWidth, vh: innerHeight };
   });
-  check(!!viewer, "tap on image opens viewer");
+  check(!!viewer, "long press on image opens viewer (and it stays open after release)");
+  check((await state(page)).currentPage === target.page, "long press does not turn the page");
   if (viewer) {
     check(Math.abs(viewer.ratio / viewer.natural - 1) < 0.02, `viewer keeps aspect ratio (${viewer.w}x${viewer.h})`);
     check(Math.abs(viewer.w - viewer.vw) < 2 || Math.abs(viewer.h - viewer.vh) < 2, "viewer fills the screen on one axis");
     await page.screenshot({ path: path.join(outDir, `${label}-image-viewer.png`) });
+    await page.waitForTimeout(600); // past the post-long-press click guard
     await page.touchscreen.tap(viewer.vw / 2, viewer.vh / 2);
     await page.waitForTimeout(50);
-    const closed = await page.evaluate(() => getComputedStyle(document.getElementById("imageViewer")).display === "none");
-    check(closed, "tap on viewer closes it");
+    check(!(await viewerShown()), "tap on viewer closes it");
     check((await state(page)).currentPage === target.page, "closing viewer keeps the page");
   }
+
+  // A press that moves (a swipe) must not open the viewer.
+  await cdp.send("Input.dispatchTouchEvent", { type: "touchStart", touchPoints: [{ x: cx, y: cy }] });
+  await cdp.send("Input.dispatchTouchEvent", { type: "touchMove", touchPoints: [{ x: cx + 40, y: cy }] });
+  await page.waitForTimeout(800);
+  await cdp.send("Input.dispatchTouchEvent", { type: "touchEnd", touchPoints: [] });
+  await page.waitForTimeout(100);
+  check(!(await viewerShown()), "press that moves does not open viewer");
+  await cdp.detach();
   await button(page, "scrollToTopButton");
 }
 
