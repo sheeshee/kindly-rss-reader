@@ -281,6 +281,11 @@ async function checkArticle(page, url, label) {
   console.log(`\n# ${label}: ${url}`);
   await page.goto(url, { waitUntil: "load" });
   await page.waitForTimeout(300);
+  if (!(await page.$("#body"))) {
+    // Kindly shows an error page when it can't download the article.
+    console.log("  skip article page has no #body (download failed?)");
+    return;
+  }
 
   let s = await state(page);
   check(s.pageCount >= 1, `paginated (${s.pageCount} pages)`);
@@ -376,6 +381,93 @@ async function checkArticle(page, url, label) {
   await button(page, "zoomOutButton");
 }
 
+// Images that load after the first layout make the article longer. The
+// reader must stay on the text they were reading, not skip ahead.
+async function checkLateImages(browser, urls) {
+  // Lazy images (loading="lazy") are fetched when they come near the
+  // screen, after onload and so after the first layout. Hold those until
+  // the reader has turned the page, then let them load.
+  console.log("\n# late image loads");
+  const context = await browser.newContext({ viewport: VIEWPORT, hasTouch: true });
+  let tested = false;
+  for (const url of urls) {
+    let holding = false;
+    let held = 0;
+    let release;
+    const gate = new Promise((r) => (release = r));
+    const page = await context.newPage();
+    await page.route("**/*", async (route) => {
+      if (holding && route.request().resourceType() === "image") {
+        held++;
+        await gate;
+      }
+      await route.continue().catch(() => {});
+    });
+    await page.goto(url, { waitUntil: "load" });
+    holding = true;
+    if (!(await page.$("#body"))) {
+      release();
+      await page.close();
+      continue;
+    }
+    await page.waitForTimeout(300);
+    const before = await page.evaluate(() => pageCount);
+    const pending = await page.evaluate(() => [...document.querySelectorAll("#body img")].filter((i) => !i.complete).length);
+    if (pending === 0 || before < 2) {
+      release();
+      await page.close();
+      continue;
+    }
+    await page.evaluate(() => showPage(1));
+    await page.waitForTimeout(300);
+    // First words at the top of page 2.
+    const topText = await page.evaluate(() => {
+      const body = document.getElementById("body");
+      const box = body.getBoundingClientRect();
+      const st = getComputedStyle(body);
+      for (let dy = 2; dy < box.height / 2; dy += 8) {
+        const r = document.caretRangeFromPoint(box.left + parseFloat(st.paddingLeft) + 2, box.top + parseFloat(st.paddingTop) + dy);
+        if (r && r.startContainer.nodeType === 3) {
+          const t = r.startContainer.textContent.slice(r.startOffset, r.startOffset + 30);
+          if (t.trim().length >= 10) return t;
+        }
+      }
+      return "";
+    });
+    const heldBefore = held;
+    release();
+    await page.waitForTimeout(2000);
+    const after = await page.evaluate(() => ({ pageCount, currentPage }));
+    const visible = await page.evaluate((t) => {
+      const body = document.getElementById("body");
+      const box = body.getBoundingClientRect();
+      const walker = document.createTreeWalker(body, NodeFilter.SHOW_TEXT);
+      for (let n; (n = walker.nextNode()); ) {
+        const i = n.textContent.indexOf(t);
+        if (i < 0) continue;
+        const r = document.createRange();
+        r.setStart(n, i);
+        r.setEnd(n, i + 1);
+        const rect = r.getClientRects()[0];
+        if (rect && rect.left >= box.left && rect.right <= box.right) return true;
+      }
+      return false;
+    }, topText);
+    console.log(`  note ${heldBefore} images held, ${before} -> ${after.pageCount} pages, now on page ${after.currentPage + 1}`);
+    if (!topText || after.pageCount === before) {
+      // Layout didn't change: nothing to test on this article.
+      await page.close();
+      continue;
+    }
+    check(visible, `text at top of page 2 still on screen after late images ("${topText.trim().slice(0, 20)}")`);
+    tested = true;
+    await page.close();
+    break;
+  }
+  if (!tested) console.log("  skip no article whose page count changed when images loaded late");
+  await context.close();
+}
+
 async function main() {
   rmSync(outDir, { recursive: true, force: true });
   mkdirSync(outDir, { recursive: true });
@@ -427,6 +519,8 @@ async function main() {
     for (const [i, url] of articleUrls.slice(0, ARTICLES_TO_CHECK).entries()) {
       await checkArticle(page, url, `article${i + 1}`);
     }
+
+    await checkLateImages(browser, articleUrls.slice(0, 10));
 
     if (KEEP_OPEN) {
       console.log(`\n--keep-open: server running at ${base} (Ctrl+C to stop)`);

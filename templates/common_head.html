@@ -115,10 +115,60 @@
         showPage(currentPage);
     }
 
+    // Re-layout (late image loads, zoom, resize) while keeping the text the
+    // reader was looking at on screen. Mapping the page index proportionally
+    // skips a page whenever the page count grows.
     function relayoutKeepingPosition() {
-        let ratio = pageCount > 1 ? currentPage / (pageCount - 1) : 0;
+        let anchor = currentPage > 0 ? pageAnchor() : null;
+        let fallback = currentPage;
         layoutPages();
-        showPage(Math.round(ratio * (pageCount - 1)));
+        let page = anchor ? pageOfAnchor(anchor) : null;
+        showPage(page === null ? fallback : page);
+    }
+
+    // A collapsed range at the start of the current page's text, or the
+    // element there for browsers without caretRangeFromPoint.
+    function pageAnchor() {
+        let box = bodyDiv.getBoundingClientRect();
+        let style = window.getComputedStyle(bodyDiv);
+        let x = box.left + parseFloat(style.paddingLeft) + 2;
+        let y = box.top + parseFloat(style.paddingTop) + 2;
+        for (let dy = 0; dy < box.height / 2; dy += 8) {
+            if (document.caretRangeFromPoint) {
+                let range = document.caretRangeFromPoint(x, y + dy);
+                if (range && range.startContainer.nodeType === 3
+                    && bodyDiv.contains(range.startContainer)) {
+                    return range;
+                }
+            }
+            let el = document.elementFromPoint(x, y + dy);
+            if (el && el !== bodyDiv && bodyDiv.contains(el)) {
+                return el;
+            }
+        }
+        return null;
+    }
+
+    // Page the anchor is on after a re-layout, or null if it can't be measured.
+    function pageOfAnchor(anchor) {
+        let target = anchor;
+        if (anchor.cloneRange) {
+            // A collapsed range may have no rects: measure one character.
+            target = anchor.cloneRange();
+            let node = anchor.startContainer;
+            if (anchor.startOffset < node.length) {
+                target.setEnd(node, anchor.startOffset + 1);
+            } else if (anchor.startOffset > 0) {
+                target.setStart(node, anchor.startOffset - 1);
+            }
+        }
+        let rects = target.getClientRects();
+        if (!rects.length) {
+            return null;
+        }
+        let box = bodyDiv.getBoundingClientRect();
+        let offset = rects[0].left - box.left + bodyDiv.scrollLeft;
+        return Math.max(0, Math.min(pageCount - 1, Math.floor(offset / bodyDiv.clientWidth)));
     }
 
     function showPage(page) {
