@@ -48,7 +48,8 @@ const VIEWPORT = { width: 758, height: 1024 };
 const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../..");
 const outDir = path.join(repoRoot, "tests/e2e/out");
 const binary = path.join(repoRoot, "target/debug/kindle-rss-reader");
-const base = `http://127.0.0.1:${PORT}`;
+// Set BASE_PATH (e.g. /rss) to test the app under a URL prefix.
+const base = `http://127.0.0.1:${PORT}${process.env.BASE_PATH || ""}`;
 
 let failures = 0;
 function check(cond, msg) {
