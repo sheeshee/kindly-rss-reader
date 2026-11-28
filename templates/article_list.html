@@ -23,7 +23,7 @@
                         </a>
                     </div>
                 </div>
-                <div id="body" class="list">
+                <div id="body" class="list paginated">
                     {% for item in context.articles %}
                     <a href="{{ base_path }}/feed/{{context.feed.id}}/article/{{item.id}}">
                         <div class="article-list-item">

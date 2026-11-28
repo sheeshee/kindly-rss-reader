@@ -252,13 +252,13 @@ sub {
 }
 
 /*
- * Paginated article view.
- * The article body is laid out as a sequence of fixed-height columns that are
+ * Paginated views (articles and lists).
+ * The body is laid out as a sequence of fixed-height columns that are
  * exactly one viewport wide; "turning a page" scrolls horizontally by one
  * column. Column breaks happen between lines, so no line is ever cut in half.
  * The gap equals the horizontal padding so one page step == clientWidth.
  */
-.body.paginated {
+.paginated {
     overflow: hidden;
     padding: 10px 15px;
     -webkit-column-count: 1;
@@ -272,17 +272,52 @@ sub {
     column-fill: auto;
 }
 
-.body.paginated img,
-.body.paginated figure,
-.body.paginated pre,
-.body.paginated table {
+.paginated img,
+.paginated figure,
+.paginated pre,
+.paginated table,
+.list.paginated > a {
     -webkit-column-break-inside: avoid;
     page-break-inside: avoid;
     break-inside: avoid;
 }
 
+/* List rows are links; make them blocks so a row is never split across pages */
+.list.paginated > a {
+    display: block;
+}
+
+/*
+ * Article images: the width/height HTML attributes are overridden so the
+ * max-width / max-height limits scale both sides and keep the aspect ratio.
+ * max-height (half a page) is set from JS, which knows the page height.
+ */
+.body.paginated img:not(.favicon) {
+    width: auto;
+    height: auto;
+    max-width: 100%;
+    object-fit: contain;
+}
+
 .body.paginated pre {
     white-space: pre-wrap;
+}
+
+.image-viewer {
+    display: none;
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    align-items: center;
+    justify-content: center;
+    z-index: 10;
+}
+
+/* Size is set from JS (sizeViewerImage) to fit the screen */
+.image-viewer img {
+    max-width: none;
 }
 
 .page-indicator {

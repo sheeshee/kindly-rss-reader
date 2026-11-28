@@ -16,7 +16,7 @@
                     <div class="section-header-buttons">
                         <a href="{{ base_path }}/feed/add">
                             <i
-                                id="scrollUpButton"
+                                id="addFeedButton"
                                 class="fa fa-plus button"
                                 aria-hidden="true">
                             </i>
@@ -31,7 +31,7 @@
                         </a>
                     </div>
                 </div>
-                <div id="body" class="list">
+                <div id="body" class="list paginated">
                     {% for feed in context.feeds %}
                         <a href="{{ base_path }}/feed/{{ feed.id }}">
                             <div class="feed-list-item">

@@ -3,14 +3,17 @@
 // End-to-end check for the paginated article view.
 //
 // Boots the app against a throwaway data directory, subscribes to a real feed
-// (BBC News by default), opens a few articles in a Kindle-sized viewport and
-// verifies that:
-//   - the article is split into pages and never scrolls vertically
-//   - no line of text is cut in half at a page boundary
-//   - a tap on the text goes to the next page; a tap on a link does not
+// (BBC News by default), opens the lists and a few articles in a Kindle-sized
+// viewport and verifies that:
+//   - articles and lists are split into pages and never scroll vertically
+//   - no line of text / list row is cut in half at a page boundary
+//   - a tap on the right half goes forward, on the left half goes back,
+//     and a tap on a link does not turn the page
 //   - the toolbar buttons move by pages (next/prev/first/last)
+//   - images keep their aspect ratio and are at most half a page tall
+//   - tapping an image opens it full screen; tapping again closes it
 //   - zooming re-paginates without breaking the above
-//   - list views (feed list) still scroll vertically
+//   - a list remembers its page when you come back to it
 // Screenshots of each page are written to tests/e2e/out/.
 //
 // Usage:
@@ -67,20 +70,33 @@ async function waitForServer() {
   throw new Error("server did not start");
 }
 
-// Returns a point inside #body whose element is not inside a link.
-async function nonLinkPoint(page) {
-  return page.evaluate(() => {
+// Returns a point in the given half ("left"/"right") of #body that is not on
+// a link or an image, so tapping it turns the page.
+async function tapPoint(page, side) {
+  return page.evaluate((side) => {
     const r = document.getElementById("body").getBoundingClientRect();
-    for (let fy = 0.5; fy < 0.95; fy += 0.05) {
-      for (let fx = 0.5; fx < 0.95; fx += 0.1) {
+    const xs = side === "left" ? [0.05, 0.15, 0.25, 0.35, 0.45] : [0.95, 0.85, 0.75, 0.65, 0.55];
+    for (let fy = 0.05; fy < 1; fy += 0.05) {
+      for (const fx of xs) {
         const x = r.left + r.width * fx, y = r.top + r.height * fy;
         const el = document.elementFromPoint(x, y);
-        if (el && !el.closest("a") && el.closest("#body")) return { x, y };
+        if (el && el.closest("#body") && !el.closest("a") && el.tagName !== "IMG") return { x, y };
       }
     }
-    return { x: r.left + r.width / 2, y: r.top + r.height - 5 };
-  });
+    return null;
+  }, side);
 }
+
+async function tapSide(page, side) {
+  const pt = await tapPoint(page, side);
+  if (!pt) return false;
+  await page.touchscreen.tap(pt.x, pt.y);
+  await page.waitForTimeout(50);
+  return true;
+}
+
+// Toolbar buttons (the toolbar ids are unique; scope anyway for safety).
+const button = (page, id) => page.click(`#toolbar #${id}`);
 
 const state = (page) =>
   page.evaluate(() => {
@@ -102,6 +118,7 @@ const clippedLines = (page) =>
   page.evaluate(() => {
     const body = document.getElementById("body");
     const box = body.getBoundingClientRect();
+    if (box.width === 0) return [];
     const walker = document.createTreeWalker(body, NodeFilter.SHOW_TEXT);
     const bad = [];
     const range = document.createRange();
@@ -125,6 +142,105 @@ const clippedLines = (page) =>
     return bad;
   });
 
+// Images: aspect ratio kept, at most half a page tall, tap opens a viewer.
+async function checkImages(page, label) {
+  const imgs = await page.evaluate(() => {
+    const body = document.getElementById("body");
+    const style = getComputedStyle(body);
+    const inner = body.clientHeight - parseFloat(style.paddingTop) - parseFloat(style.paddingBottom);
+    return [...body.querySelectorAll("img:not(.favicon)")]
+      .filter((i) => i.naturalWidth > 0 && i.width > 0)
+      .map((i, idx) => {
+        i.setAttribute("data-e2e-img", idx);
+        return {
+          idx,
+          natural: i.naturalWidth / i.naturalHeight,
+          shown: i.width / i.height,
+          height: i.height,
+          maxHeight: inner / 2,
+          src: i.src.split("/").pop(),
+        };
+      });
+  });
+  if (imgs.length === 0) {
+    console.log("  skip no images in article");
+    return;
+  }
+  const distorted = imgs.filter((i) => Math.abs(i.shown / i.natural - 1) > 0.02);
+  check(distorted.length === 0, `${imgs.length} images keep aspect ratio${distorted.length ? ": " + distorted.map((d) => `${d.src} ${d.natural.toFixed(2)} vs ${d.shown.toFixed(2)}`).join(", ") : ""}`);
+  const tall = imgs.filter((i) => i.height > i.maxHeight + 1);
+  check(tall.length === 0, `images at most half a page tall${tall.length ? ": " + tall.map((t) => `${t.src} ${t.height}px`).join(", ") : ""}`);
+
+  // Go to the page with the first unlinked image and tap it.
+  const target = await page.evaluate(() => {
+    const img = [...document.querySelectorAll("[data-e2e-img]")].find((i) => !i.closest("a"));
+    if (!img) return null;
+    const body = document.getElementById("body");
+    const page = Math.floor((img.offsetLeft) / body.clientWidth);
+    showPage(page);
+    return { idx: img.getAttribute("data-e2e-img"), page: currentPage };
+  });
+  if (!target) {
+    console.log("  skip all images are inside links");
+    return;
+  }
+  await page.waitForTimeout(50);
+  const box = await page.locator(`[data-e2e-img="${target.idx}"]`).boundingBox();
+  await page.touchscreen.tap(box.x + box.width / 2, box.y + box.height / 2);
+  await page.waitForTimeout(100);
+  const viewer = await page.evaluate(() => {
+    const v = document.getElementById("imageViewer");
+    if (!v || getComputedStyle(v).display === "none") return null;
+    const i = v.querySelector("img");
+    return { w: i.width, h: i.height, ratio: i.width / i.height, natural: i.naturalWidth / i.naturalHeight, vw: innerWidth, vh: innerHeight };
+  });
+  check(!!viewer, "tap on image opens viewer");
+  if (viewer) {
+    check(Math.abs(viewer.ratio / viewer.natural - 1) < 0.02, `viewer keeps aspect ratio (${viewer.w}x${viewer.h})`);
+    check(Math.abs(viewer.w - viewer.vw) < 2 || Math.abs(viewer.h - viewer.vh) < 2, "viewer fills the screen on one axis");
+    await page.screenshot({ path: path.join(outDir, `${label}-image-viewer.png`) });
+    await page.touchscreen.tap(viewer.vw / 2, viewer.vh / 2);
+    await page.waitForTimeout(50);
+    const closed = await page.evaluate(() => getComputedStyle(document.getElementById("imageViewer")).display === "none");
+    check(closed, "tap on viewer closes it");
+    check((await state(page)).currentPage === target.page, "closing viewer keeps the page");
+  }
+  await button(page, "scrollToTopButton");
+}
+
+// Lists: paginated, rows not split, buttons page, page remembered on return.
+async function checkList(page, url, label) {
+  console.log(`\n# ${label}: ${url}`);
+  await page.goto(url, { waitUntil: "load" });
+  await page.waitForTimeout(200);
+  const s = await state(page);
+  check(s.indicator === `${s.currentPage + 1}/${s.pageCount}`, `paginated (${s.pageCount} pages, indicator "${s.indicator}")`);
+  check(s.scrollHeight <= s.clientHeight + 1, "no vertical overflow");
+  const split = [];
+  for (let i = 0; i < s.pageCount; i++) {
+    await page.evaluate((p) => showPage(p), i);
+    split.push(...(await page.evaluate(() => {
+      const box = document.getElementById("body").getBoundingClientRect();
+      return [...document.querySelectorAll("#body > a")].filter((a) => {
+        const r = a.getBoundingClientRect();
+        const visible = r.right > box.left + 1 && r.left < box.right - 1;
+        return visible && (r.top < box.top - 1 || r.bottom > box.bottom + 1);
+      }).map((a) => a.textContent.trim().slice(0, 40));
+    })));
+    await page.screenshot({ path: path.join(outDir, `${label}-page${i + 1}.png`) });
+  }
+  check(split.length === 0, `no rows split across pages${split.length ? ": " + split.slice(0, 3).join(" | ") : ""}`);
+  await button(page, "scrollToTopButton");
+  if (s.pageCount > 1) {
+    await button(page, "scrollDownButton");
+    check((await state(page)).currentPage === 1, "down button -> next page");
+    await page.reload({ waitUntil: "load" });
+    check((await state(page)).currentPage === 1, "page remembered after reload");
+    await button(page, "scrollUpButton");
+    check((await state(page)).currentPage === 0, "up button -> previous page");
+  }
+}
+
 async function checkArticle(page, url, label) {
   console.log(`\n# ${label}: ${url}`);
   await page.goto(url, { waitUntil: "load" });
@@ -135,8 +251,8 @@ async function checkArticle(page, url, label) {
   check(s.indicator === `1/${s.pageCount}`, `indicator shows "${s.indicator}"`);
   check(s.scrollHeight <= s.clientHeight + 1, `no vertical overflow (${s.scrollHeight} <= ${s.clientHeight})`);
 
-  // Walk every page with taps, checking for clipped lines and screenshotting.
-  const pt = await nonLinkPoint(page);
+  // Walk every page forward with right-half taps, checking for clipped
+  // lines and screenshotting.
   const allClipped = [];
   for (let i = 0; i < s.pageCount; i++) {
     const cur = await state(page);
@@ -148,26 +264,41 @@ async function checkArticle(page, url, label) {
     const clipped = await clippedLines(page);
     allClipped.push(...clipped.map((t) => `p${i + 1}: ${t}`));
     await page.screenshot({ path: path.join(outDir, `${label}-page${i + 1}.png`) });
-    await page.touchscreen.tap(pt.x, pt.y);
-    await page.waitForTimeout(50);
+    if (!(await tapSide(page, "right"))) {
+      await button(page, "scrollDownButton");
+      console.log(`  note page ${i + 1}: no free spot on the right half, used button`);
+    }
   }
   check(allClipped.length === 0, `no lines cut at page edges${allClipped.length ? ": " + allClipped.slice(0, 3).join(" | ") : ""}`);
 
   s = await state(page);
-  check(s.currentPage === s.pageCount - 1, "tap on last page stays on last page");
+  check(s.currentPage === s.pageCount - 1, "right tap on last page stays on last page");
+
+  if (s.pageCount > 1) {
+    if (await tapSide(page, "left")) {
+      check((await state(page)).currentPage === s.pageCount - 2, "left tap -> previous page");
+    } else {
+      console.log("  skip no free spot on the left half");
+    }
+  }
 
   // Toolbar buttons.
-  await page.click("#scrollToTopButton");
+  await button(page, "scrollToTopButton");
   check((await state(page)).currentPage === 0, "top button -> first page");
+  if (await tapSide(page, "left")) {
+    check((await state(page)).currentPage === 0, "left tap on first page stays on first page");
+  }
   if (s.pageCount > 1) {
-    await page.click("#scrollDownButton");
+    await button(page, "scrollDownButton");
     check((await state(page)).currentPage === 1, "down button -> next page");
-    await page.click("#scrollUpButton");
+    await button(page, "scrollUpButton");
     check((await state(page)).currentPage === 0, "up button -> previous page");
   }
-  await page.click("#scrollBottomButton");
+  await button(page, "scrollBottomButton");
   check((await state(page)).currentPage === s.pageCount - 1, "bottom button -> last page");
-  await page.click("#scrollToTopButton");
+  await button(page, "scrollToTopButton");
+
+  await checkImages(page, label);
 
   // Tapping a link must not turn the page (navigation blocked for the test).
   const hasLink = await page.evaluate(() => {
@@ -177,7 +308,10 @@ async function checkArticle(page, url, label) {
       return r.width > 0 && r.left >= b.left && r.right <= b.right && r.top >= b.top && r.bottom <= b.bottom;
     });
     if (!a) return false;
-    window.addEventListener("click", (e) => e.preventDefault(), true);
+    if (!window.__e2eBlockLinks) {
+      window.__e2eBlockLinks = true;
+      window.addEventListener("click", (e) => { if (e.target.closest("a")) e.preventDefault(); }, true);
+    }
     a.setAttribute("data-e2e-link", "1");
     return true;
   });
@@ -189,8 +323,8 @@ async function checkArticle(page, url, label) {
   }
 
   // Zoom re-paginates.
-  await page.click("#zoomInButton");
-  await page.click("#zoomInButton");
+  await button(page, "zoomInButton");
+  await button(page, "zoomInButton");
   await page.waitForTimeout(100);
   const z = await state(page);
   check(z.pageCount >= s.pageCount, `zoom in re-paginates (${s.pageCount} -> ${z.pageCount} pages)`);
@@ -202,8 +336,8 @@ async function checkArticle(page, url, label) {
   }
   check(zClipped.length === 0, `no lines cut after zoom${zClipped.length ? ": " + zClipped.slice(0, 3).join(" | ") : ""}`);
   await page.screenshot({ path: path.join(outDir, `${label}-zoomed.png`) });
-  await page.click("#zoomOutButton");
-  await page.click("#zoomOutButton");
+  await button(page, "zoomOutButton");
+  await button(page, "zoomOutButton");
 }
 
 async function main() {
@@ -246,20 +380,13 @@ async function main() {
 
     await page.goto(base + "/");
     const feedHref = await page.getAttribute("#body a", "href");
-    await page.goto(new URL(feedHref, base + "/").href);
+    const feedUrl = new URL(feedHref, base + "/").href;
+    await page.goto(feedUrl);
     const articleUrls = await page.$$eval("#body a[href*='/article/']", (as) => as.map((a) => a.href));
     if (articleUrls.length === 0) throw new Error("feed has no articles");
 
-    // Regression: list views keep vertical scrolling.
-    console.log("\n# article list");
-    const before = await page.evaluate(() => document.getElementById("body").scrollTop);
-    await page.click("#scrollDownButton");
-    const after = await page.evaluate(() => document.getElementById("body").scrollTop);
-    const scrollable = await page.evaluate(() => {
-      const b = document.getElementById("body");
-      return b.scrollHeight > b.clientHeight;
-    });
-    check(!scrollable || after > before, `list scrolls vertically (${before} -> ${after})`);
+    await checkList(page, base + "/", "feed-list");
+    await checkList(page, feedUrl, "article-list");
 
     for (const [i, url] of articleUrls.slice(0, ARTICLES_TO_CHECK).entries()) {
       await checkArticle(page, url, `article${i + 1}`);

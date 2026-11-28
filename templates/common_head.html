@@ -76,16 +76,19 @@
     // ---------------------------------------------------------------------
     // Pagination
     //
-    // The article body is a multi-column box with a fixed height and one
-    // column per "page" (see .body.paginated in general.css). Pages are laid
-    // out horizontally; page N starts at scrollLeft = N * clientWidth because
-    // the column gap equals the horizontal padding.
+    // A paginated #body (articles and lists) is a multi-column box with a
+    // fixed height and one column per "page" (see .paginated in general.css).
+    // Pages are laid out horizontally; page N starts at scrollLeft =
+    // N * clientWidth because the column gap equals the horizontal padding.
     // ---------------------------------------------------------------------
+    var IMAGE_MAX_PAGE_FRACTION = 0.5;
+
     function initPagination() {
+        currentPage = loadSavedPage();
         layoutPages();
         bodyDiv.addEventListener("click", onPageTap);
 
-        // Images load after onload when cached data is missing; re-measure.
+        // Images that finish loading after onload change the layout.
         bodyDiv.querySelectorAll("img").forEach(function (img) {
             if (!img.complete) {
                 img.addEventListener("load", relayoutKeepingPosition);
@@ -98,17 +101,16 @@
     // Measures the content and recomputes the page count. Must be called
     // whenever the box size or zoom changes.
     function layoutPages() {
-        // Keep tall images inside a single page.
+        // Images take at most half a page (aspect ratio kept by CSS).
         let style = window.getComputedStyle(bodyDiv);
         let innerHeight = bodyDiv.clientHeight
             - parseFloat(style.paddingTop) - parseFloat(style.paddingBottom);
-        bodyDiv.querySelectorAll("img, video, figure").forEach(function (el) {
-            el.style.maxHeight = innerHeight + "px";
+        bodyDiv.querySelectorAll("img:not(.favicon), video").forEach(function (el) {
+            el.style.maxHeight = Math.floor(innerHeight * IMAGE_MAX_PAGE_FRACTION) + "px";
         });
 
         let pageWidth = bodyDiv.clientWidth;
         pageCount = Math.max(1, Math.ceil((bodyDiv.scrollWidth - 1) / pageWidth));
-        currentPage = Math.min(currentPage, pageCount - 1);
         showPage(currentPage);
     }
 
@@ -124,6 +126,23 @@
         bodyDiv.scrollLeft = currentPage * bodyDiv.clientWidth;
         removeGhostLettersFinish();
         updatePageIndicator();
+        savePage();
+    }
+
+    // Remember the page per URL for this browser session, so coming back
+    // to a list (or re-opening an article) lands where you left off.
+    function savePage() {
+        try {
+            sessionStorage.setItem("page:" + location.pathname, String(currentPage));
+        } catch (e) {}
+    }
+
+    function loadSavedPage() {
+        try {
+            return parseInt(sessionStorage.getItem("page:" + location.pathname), 10) || 0;
+        } catch (e) {
+            return 0;
+        }
     }
 
     function updatePageIndicator() {
@@ -133,25 +152,77 @@
         }
     }
 
-    // A tap anywhere on the article goes to the next page, except taps on
-    // links (so they stay usable) or when the user is selecting text.
+    // Taps on a paginated view:
+    //   - links keep working as links
+    //   - an image opens it full screen
+    //   - left half goes to the previous page, right half to the next one
     function onPageTap(event) {
-        if (event.target.closest && event.target.closest("a")) {
+        let target = event.target;
+        if (target.closest && target.closest("a")) {
             return;
         }
         let selection = window.getSelection ? window.getSelection() : null;
         if (selection && selection.toString().length > 0) {
             return;
         }
-        nextPage();
+        if (target.tagName === "IMG" && !target.classList.contains("favicon")) {
+            openImageViewer(target);
+            return;
+        }
+        let rect = bodyDiv.getBoundingClientRect();
+        if (event.clientX < rect.left + rect.width / 2) {
+            prevPage();
+        } else {
+            nextPage();
+        }
     }
 
     function nextPage() { showPage(currentPage + 1); }
     function prevPage() { showPage(currentPage - 1); }
 
+    // Full screen image viewer: tap the image to open, tap anywhere to close.
+    function openImageViewer(img) {
+        let viewer = document.getElementById("imageViewer");
+        if (!viewer) {
+            viewer = document.createElement("div");
+            viewer.id = "imageViewer";
+            viewer.className = "image-viewer";
+            viewer.appendChild(document.createElement("img"));
+            viewer.addEventListener("click", closeImageViewer);
+            document.body.appendChild(viewer);
+        }
+        let big = viewer.firstChild;
+        big.onload = function () { sizeViewerImage(big); };
+        big.src = img.currentSrc || img.src;
+        big.alt = img.alt || "";
+        viewer.style.display = "flex";
+        if (big.complete) {
+            sizeViewerImage(big);
+        }
+    }
+
+    // Scale the image (up or down) to the largest size that fits the screen,
+    // keeping its aspect ratio. Done in JS because older e-reader browsers
+    // don't support object-fit.
+    function sizeViewerImage(img) {
+        if (!img.naturalWidth || !img.naturalHeight) {
+            return;
+        }
+        let scale = Math.min(window.innerWidth / img.naturalWidth, window.innerHeight / img.naturalHeight);
+        img.style.width = Math.floor(img.naturalWidth * scale) + "px";
+        img.style.height = Math.floor(img.naturalHeight * scale) + "px";
+    }
+
+    function closeImageViewer() {
+        let viewer = document.getElementById("imageViewer");
+        if (viewer) {
+            viewer.style.display = "none";
+        }
+    }
+
     // ---------------------------------------------------------------------
-    // Toolbar navigation. On paginated views these move by pages; on lists
-    // (feed list, article list) they keep scrolling vertically.
+    // Toolbar navigation. On paginated views (articles, feed list, article
+    // list) these move by pages; any other view scrolls vertically.
     // ---------------------------------------------------------------------
     function scrollDown() {
         if (paginated) { return nextPage(); }

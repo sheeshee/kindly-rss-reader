@@ -54,3 +54,7 @@ a {
 #default_favicon {
   filter: invert(100%);
 }
+
+.image-viewer {
+    background-color: black;
+}
