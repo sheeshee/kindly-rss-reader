@@ -20,7 +20,7 @@
                     <h1> {{ context.feed.title }} </h1>
                 </div>
                 {% endif %}
-                <div id="body" class="body">
+                <div id="body" class="body paginated">
                     {% if not context.article_data.html_parsed %}
                     <h1> {{ context.article_data.title }} </h1>
                     {% endif %}

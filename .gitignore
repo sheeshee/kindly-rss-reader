@@ -3,3 +3,4 @@ database.db
 /articles
 /favicons
 .DS_store
+/tests/e2e/out

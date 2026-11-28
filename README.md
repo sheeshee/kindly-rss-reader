@@ -117,3 +117,13 @@ Here are some screenshots of the Kindly RSS Reader in action:
   <img src="images/3_dark.jpeg" alt="Article dark theme" height="350px">
 </p>
 
+### End-to-end test of the article view
+
+`tests/e2e/pagination.mjs` starts the app on a throwaway data directory, subscribes to a live feed (BBC News by default) and checks the paginated article view in a Kindle-sized browser: page turns by tap and toolbar buttons, no lines cut at page edges, zoom re-pagination, and list views still scrolling. Screenshots of every page land in `tests/e2e/out/`.
+
+```bash
+npm i -D playwright && npx playwright install chromium   # once
+make e2e                                                 # or: make e2e E2E_ARGS="--feed <url> --articles 5"
+```
+
+Pass `--keep-open` to leave the server running afterwards for manual poking.

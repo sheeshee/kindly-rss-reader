@@ -250,3 +250,44 @@ sub {
     justify-content: space-between;
     width: 100%;
 }
+
+/*
+ * Paginated article view.
+ * The article body is laid out as a sequence of fixed-height columns that are
+ * exactly one viewport wide; "turning a page" scrolls horizontally by one
+ * column. Column breaks happen between lines, so no line is ever cut in half.
+ * The gap equals the horizontal padding so one page step == clientWidth.
+ */
+.body.paginated {
+    overflow: hidden;
+    padding: 10px 15px;
+    -webkit-column-count: 1;
+    -moz-column-count: 1;
+    column-count: 1;
+    -webkit-column-gap: 30px;
+    -moz-column-gap: 30px;
+    column-gap: 30px;
+    -webkit-column-fill: auto;
+    -moz-column-fill: auto;
+    column-fill: auto;
+}
+
+.body.paginated img,
+.body.paginated figure,
+.body.paginated pre,
+.body.paginated table {
+    -webkit-column-break-inside: avoid;
+    page-break-inside: avoid;
+    break-inside: avoid;
+}
+
+.body.paginated pre {
+    white-space: pre-wrap;
+}
+
+.page-indicator {
+    display: block;
+    text-align: center;
+    font-size: 11pt;
+    margin-top: 10px;
+}

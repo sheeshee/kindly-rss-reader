@@ -22,6 +22,11 @@
     var zoom = {{ config.zoom }};
     var zoomStep = 0.1;
 
+    // Pagination state (article view only, see initPagination)
+    var paginated = false;
+    var currentPage = 0;
+    var pageCount = 1;
+
     window.onpageshow = function(event) {
         if (sessionStorage.getItem("refresh")) {
           sessionStorage.removeItem("refresh");
@@ -36,6 +41,7 @@
     window.onload = function onLoad() {
         bodyDiv = document.getElementById("body");
         offsetNotScroll = Math.round(bodyDiv.offsetHeight * 0.1);
+        paginated = bodyDiv.classList.contains("paginated");
 
         let headerElement = document.getElementById("header");
         let headerHeight = headerElement ? headerElement.offsetHeight : 0;
@@ -47,6 +53,10 @@
         bodyDiv.style.zoom = zoom;
         darkTheme = getJinjaBool('{{ config.dark_theme }}');
         updateZoomValue();
+
+        if (paginated) {
+            initPagination();
+        }
     }
 
     function removeGhostLettersInit() {
@@ -63,7 +73,88 @@
         }, 10);
     }
 
+    // ---------------------------------------------------------------------
+    // Pagination
+    //
+    // The article body is a multi-column box with a fixed height and one
+    // column per "page" (see .body.paginated in general.css). Pages are laid
+    // out horizontally; page N starts at scrollLeft = N * clientWidth because
+    // the column gap equals the horizontal padding.
+    // ---------------------------------------------------------------------
+    function initPagination() {
+        layoutPages();
+        bodyDiv.addEventListener("click", onPageTap);
+
+        // Images load after onload when cached data is missing; re-measure.
+        bodyDiv.querySelectorAll("img").forEach(function (img) {
+            if (!img.complete) {
+                img.addEventListener("load", relayoutKeepingPosition);
+            }
+        });
+
+        window.addEventListener("resize", relayoutKeepingPosition);
+    }
+
+    // Measures the content and recomputes the page count. Must be called
+    // whenever the box size or zoom changes.
+    function layoutPages() {
+        // Keep tall images inside a single page.
+        let style = window.getComputedStyle(bodyDiv);
+        let innerHeight = bodyDiv.clientHeight
+            - parseFloat(style.paddingTop) - parseFloat(style.paddingBottom);
+        bodyDiv.querySelectorAll("img, video, figure").forEach(function (el) {
+            el.style.maxHeight = innerHeight + "px";
+        });
+
+        let pageWidth = bodyDiv.clientWidth;
+        pageCount = Math.max(1, Math.ceil((bodyDiv.scrollWidth - 1) / pageWidth));
+        currentPage = Math.min(currentPage, pageCount - 1);
+        showPage(currentPage);
+    }
+
+    function relayoutKeepingPosition() {
+        let ratio = pageCount > 1 ? currentPage / (pageCount - 1) : 0;
+        layoutPages();
+        showPage(Math.round(ratio * (pageCount - 1)));
+    }
+
+    function showPage(page) {
+        currentPage = Math.max(0, Math.min(page, pageCount - 1));
+        removeGhostLettersInit();
+        bodyDiv.scrollLeft = currentPage * bodyDiv.clientWidth;
+        removeGhostLettersFinish();
+        updatePageIndicator();
+    }
+
+    function updatePageIndicator() {
+        let indicator = document.getElementById("pageIndicator");
+        if (indicator) {
+            indicator.textContent = (currentPage + 1) + "/" + pageCount;
+        }
+    }
+
+    // A tap anywhere on the article goes to the next page, except taps on
+    // links (so they stay usable) or when the user is selecting text.
+    function onPageTap(event) {
+        if (event.target.closest && event.target.closest("a")) {
+            return;
+        }
+        let selection = window.getSelection ? window.getSelection() : null;
+        if (selection && selection.toString().length > 0) {
+            return;
+        }
+        nextPage();
+    }
+
+    function nextPage() { showPage(currentPage + 1); }
+    function prevPage() { showPage(currentPage - 1); }
+
+    // ---------------------------------------------------------------------
+    // Toolbar navigation. On paginated views these move by pages; on lists
+    // (feed list, article list) they keep scrolling vertically.
+    // ---------------------------------------------------------------------
     function scrollDown() {
+        if (paginated) { return nextPage(); }
         removeGhostLettersInit();
         scrollPosition = Math.min(scrollPosition + bodyDiv.offsetHeight - offsetNotScroll, bodyDiv.scrollHeight);
         bodyDiv.scroll(0, scrollPosition);
@@ -71,6 +162,7 @@
     }
 
     function scrollUp() {
+        if (paginated) { return prevPage(); }
         removeGhostLettersInit();
         scrollPosition = Math.max(scrollPosition - bodyDiv.offsetHeight + offsetNotScroll, 0);
         bodyDiv.scroll(0, scrollPosition);
@@ -78,6 +170,7 @@
     }
 
     function scrollToTop() {
+        if (paginated) { return showPage(0); }
         removeGhostLettersInit();
         scrollPosition = 0;
         bodyDiv.scroll(0, scrollPosition);
@@ -85,6 +178,7 @@
     }
 
     function scrollToBottom() {
+        if (paginated) { return showPage(pageCount - 1); }
         removeGhostLettersInit();
         scrollPosition = bodyDiv.scrollHeight - bodyDiv.offsetHeight;
         bodyDiv.scroll(0, scrollPosition);
@@ -109,6 +203,7 @@
     function zoomIn() {
         zoom += zoomStep;
         bodyDiv.style.zoom = zoom;
+        if (paginated) { relayoutKeepingPosition(); }
 
         setZoomConfig(zoom);
         updateZoomValue();
@@ -117,6 +212,7 @@
     function zoomOut() {
         zoom -= zoomStep;
         bodyDiv.style.zoom = zoom;
+        if (paginated) { relayoutKeepingPosition(); }
 
         setZoomConfig(zoom);
         updateZoomValue();

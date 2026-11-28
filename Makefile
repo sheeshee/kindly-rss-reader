@@ -58,8 +58,14 @@ docker-push:
 	docker manifest push nicoan/kindly-rss-reader:latest
 
 
+# End-to-end check of the paginated article view against a live feed (BBC News by default).
+# Requires Playwright: npm i -D playwright && npx playwright install chromium
+e2e:
+	cargo build
+	node tests/e2e/pagination.mjs $(E2E_ARGS)
+
 git-tag-and-push:
 	git tag v$(PACKAGE_VERSION)
 	git push origin v$(PACKAGE_VERSION)
 
-.PHONY: build-docker docker-push docker-prepare-build-image git-tag-and-push
+.PHONY: e2e build-docker docker-push docker-prepare-build-image git-tag-and-push
